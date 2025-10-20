@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLeave } from '../../contexts/LeaveContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -29,66 +29,114 @@ import {
 } from '../../components/ui/select';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
-import type { Employee } from '../../contexts/LeaveContext';
+import type { Employee as ContextEmployee } from '../../contexts/LeaveContext';
+import { employeeService, Employee, CreateEmployeeDto } from '../../services/employeeService';
 
 export function ManageEmployees() {
-  const { employees, addEmployee, updateEmployee, deleteEmployee } = useLeave();
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState({
-    name: '',
+  const [formData, setFormData] = useState<CreateEmployeeDto>({
+    employeeCode: '',
+    firstName: '',
+    lastName: '',
     email: '',
+    password: '',
+    phoneNumber: '',
     department: '',
-    role: 'employee',
-    joiningDate: '',
+    designation: '',
+    dateOfJoining: '',
+    role: 'Employee',
   });
+
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  const fetchEmployees = async () => {
+    setIsLoading(true);
+    try {
+      const data = await employeeService.getAllEmployees();
+      setEmployees(data);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
+      toast.error('Failed to load employees');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleOpenDialog = (employee?: Employee) => {
     if (employee) {
       setEditingEmployee(employee);
       setFormData({
-        name: employee.name,
+        employeeCode: employee.employeeCode,
+        firstName: employee.firstName,
+        lastName: employee.lastName,
         email: employee.email,
+        password: '', // Password is not included in the GET response
+        phoneNumber: employee.phoneNumber,
         department: employee.department,
+        designation: employee.designation,
+        dateOfJoining: employee.dateOfJoining.split('T')[0], // Format the date for the input
+        managerId: employee.managerId,
         role: employee.role,
-        joiningDate: employee.joiningDate,
       });
     } else {
       setEditingEmployee(null);
       setFormData({
-        name: '',
+        employeeCode: '',
+        firstName: '',
+        lastName: '',
         email: '',
+        password: '',
+        phoneNumber: '',
         department: '',
-        role: 'employee',
-        joiningDate: '',
+        designation: '',
+        dateOfJoining: '',
+        role: 'Employee',
       });
     }
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id, formData);
-      toast.success('Employee updated successfully');
-    } else {
-      addEmployee(formData);
-      toast.success('Employee added successfully');
+    try {
+      if (editingEmployee) {
+        await employeeService.updateEmployee(editingEmployee.id, formData);
+        toast.success('Employee updated successfully');
+      } else {
+        await employeeService.createEmployee(formData);
+        toast.success('Employee added successfully');
+      }
+      fetchEmployees(); // Refresh the employee list
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to save employee:', error);
+      toast.error(editingEmployee ? 'Failed to update employee' : 'Failed to add employee');
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this employee?')) {
-      deleteEmployee(id);
-      toast.success('Employee deleted successfully');
+      try {
+        await employeeService.deleteEmployee(id);
+        toast.success('Employee deleted successfully');
+        fetchEmployees(); // Refresh the employee list
+      } catch (error) {
+        console.error('Failed to delete employee:', error);
+        toast.error('Failed to delete employee');
+      }
     }
   };
 
   const filteredEmployees = employees.filter(
     (emp) =>
-      emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      emp.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       emp.department.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -126,42 +174,56 @@ export function ManageEmployees() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Employee Code</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Department</TableHead>
+                <TableHead>Designation</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Joining Date</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEmployees.map((employee) => (
-                <TableRow key={employee.id}>
-                  <TableCell>{employee.name}</TableCell>
-                  <TableCell>{employee.email}</TableCell>
-                  <TableCell>{employee.department}</TableCell>
-                  <TableCell>
-                    <span className="capitalize">{employee.role}</span>
-                  </TableCell>
-                  <TableCell>{employee.joiningDate}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleOpenDialog(employee)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(employee.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-4">Loading employees...</TableCell>
                 </TableRow>
-              ))}
+              ) : filteredEmployees.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-4">No employees found</TableCell>
+                </TableRow>
+              ) : (
+                filteredEmployees.map((employee) => (
+                  <TableRow key={employee.id}>
+                    <TableCell>{employee.employeeCode}</TableCell>
+                    <TableCell>{employee.firstName} {employee.lastName}</TableCell>
+                    <TableCell>{employee.email}</TableCell>
+                    <TableCell>{employee.department}</TableCell>
+                    <TableCell>{employee.designation}</TableCell>
+                    <TableCell>
+                      <span className="capitalize">{employee.role}</span>
+                    </TableCell>
+                    <TableCell>{new Date(employee.dateOfJoining).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(employee)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(employee.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -183,16 +245,42 @@ export function ManageEmployees() {
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="employeeCode">Employee Code</Label>
                 <Input
-                  id="name"
-                  value={formData.name}
+                  id="employeeCode"
+                  value={formData.employeeCode}
                   onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+                    setFormData({ ...formData, employeeCode: e.target.value })
                   }
                   required
                   className="bg-input-background"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name</Label>
+                  <Input
+                    id="firstName"
+                    value={formData.firstName}
+                    onChange={(e) =>
+                      setFormData({ ...formData, firstName: e.target.value })
+                    }
+                    required
+                    className="bg-input-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    value={formData.lastName}
+                    onChange={(e) =>
+                      setFormData({ ...formData, lastName: e.target.value })
+                    }
+                    required
+                    className="bg-input-background"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
@@ -202,6 +290,33 @@ export function ManageEmployees() {
                   value={formData.email}
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
+                  }
+                  required
+                  className="bg-input-background"
+                />
+              </div>
+              {!editingEmployee && (
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) =>
+                      setFormData({ ...formData, password: e.target.value })
+                    }
+                    required={!editingEmployee}
+                    className="bg-input-background"
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="phoneNumber">Phone Number</Label>
+                <Input
+                  id="phoneNumber"
+                  value={formData.phoneNumber}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phoneNumber: e.target.value })
                   }
                   required
                   className="bg-input-background"
@@ -220,10 +335,22 @@ export function ManageEmployees() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="designation">Designation</Label>
+                <Input
+                  id="designation"
+                  value={formData.designation}
+                  onChange={(e) =>
+                    setFormData({ ...formData, designation: e.target.value })
+                  }
+                  required
+                  className="bg-input-background"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
                 <Select
                   value={formData.role}
-                  onValueChange={(value) =>
+                  onValueChange={(value: string) =>
                     setFormData({ ...formData, role: value })
                   }
                 >
@@ -231,25 +358,40 @@ export function ManageEmployees() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="Employee">Employee</SelectItem>
+                    <SelectItem value="Manager">Manager</SelectItem>
+                    <SelectItem value="Admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="joiningDate">Joining Date</Label>
+                <Label htmlFor="dateOfJoining">Joining Date</Label>
                 <Input
-                  id="joiningDate"
+                  id="dateOfJoining"
                   type="date"
-                  value={formData.joiningDate}
+                  value={formData.dateOfJoining}
                   onChange={(e) =>
-                    setFormData({ ...formData, joiningDate: e.target.value })
+                    setFormData({ ...formData, dateOfJoining: e.target.value })
                   }
                   required
                   className="bg-input-background"
                 />
               </div>
+              {formData.role === 'Employee' && (
+                <div className="space-y-2">
+                  <Label htmlFor="managerId">Manager</Label>
+                  <Input
+                    id="managerId"
+                    type="number"
+                    placeholder="Enter manager ID"
+                    value={formData.managerId || ''}
+                    onChange={(e) =>
+                      setFormData({ ...formData, managerId: e.target.value ? parseInt(e.target.value) : undefined })
+                    }
+                    className="bg-input-background"
+                  />
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>

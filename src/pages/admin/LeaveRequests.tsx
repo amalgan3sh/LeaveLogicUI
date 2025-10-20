@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useLeave } from '../../contexts/LeaveContext';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -30,16 +29,34 @@ import {
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Search, CheckCircle, XCircle, Eye } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import type { LeaveRequest } from '../../contexts/LeaveContext';
+import { toast } from 'sonner';
+import { leaveRequestService, LeaveRequest, UpdateLeaveStatusDto } from '../../services/leaveRequestService';
 
 export function LeaveRequests() {
-  const { leaveRequests, updateLeaveStatus } = useLeave();
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [remarks, setRemarks] = useState('');
+
+  useEffect(() => {
+    fetchLeaveRequests();
+  }, []);
+
+  const fetchLeaveRequests = async () => {
+    setIsLoading(true);
+    try {
+      const data = await leaveRequestService.getAllLeaveRequests();
+      setLeaveRequests(data);
+    } catch (error) {
+      console.error('Failed to fetch leave requests:', error);
+      toast.error('Failed to load leave requests');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleViewRequest = (request: LeaveRequest) => {
     setSelectedRequest(request);
@@ -47,30 +64,51 @@ export function LeaveRequests() {
     setIsDialogOpen(true);
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (selectedRequest) {
-      updateLeaveStatus(selectedRequest.id, 'approved', remarks);
-      toast.success('Leave request approved');
-      setIsDialogOpen(false);
+      try {
+        const updateDto: UpdateLeaveStatusDto = {
+          status: 'approved',
+          managerRemarks: remarks
+        };
+        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
+        toast.success('Leave request approved');
+        setIsDialogOpen(false);
+        fetchLeaveRequests(); // Refresh the list
+      } catch (error) {
+        console.error('Failed to approve leave request:', error);
+        toast.error('Failed to approve leave request');
+      }
     }
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (selectedRequest) {
       if (!remarks) {
         toast.error('Please provide remarks for rejection');
         return;
       }
-      updateLeaveStatus(selectedRequest.id, 'rejected', remarks);
-      toast.success('Leave request rejected');
-      setIsDialogOpen(false);
+      
+      try {
+        const updateDto: UpdateLeaveStatusDto = {
+          status: 'rejected',
+          managerRemarks: remarks
+        };
+        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
+        toast.success('Leave request rejected');
+        setIsDialogOpen(false);
+        fetchLeaveRequests(); // Refresh the list
+      } catch (error) {
+        console.error('Failed to reject leave request:', error);
+        toast.error('Failed to reject leave request');
+      }
     }
   };
 
-  const filteredRequests = leaveRequests.filter((req) => {
+  const filteredRequests = leaveRequests.filter((req: LeaveRequest) => {
     const matchesSearch =
       req.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.leaveType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.leaveTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.department.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -140,14 +178,22 @@ export function LeaveRequests() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRequests.map((request) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-4">Loading leave requests...</TableCell>
+                </TableRow>
+              ) : filteredRequests.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-4">No leave requests found</TableCell>
+                </TableRow>
+              ) : filteredRequests.map((request: LeaveRequest) => (
                 <TableRow key={request.id}>
                   <TableCell>{request.employeeName}</TableCell>
                   <TableCell>{request.department}</TableCell>
-                  <TableCell>{request.leaveType}</TableCell>
-                  <TableCell>{request.fromDate}</TableCell>
-                  <TableCell>{request.toDate}</TableCell>
-                  <TableCell>{request.appliedDate}</TableCell>
+                  <TableCell>{request.leaveTypeName}</TableCell>
+                  <TableCell>{new Date(request.fromDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(request.toDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(request.appliedDate).toLocaleDateString()}</TableCell>
                   <TableCell>{getStatusBadge(request.status)}</TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -185,19 +231,19 @@ export function LeaveRequests() {
                 </div>
                 <div>
                   <Label>Leave Type</Label>
-                  <p>{selectedRequest.leaveType}</p>
+                  <p>{selectedRequest.leaveTypeName}</p>
                 </div>
                 <div>
                   <Label>Applied On</Label>
-                  <p>{selectedRequest.appliedDate}</p>
+                  <p>{new Date(selectedRequest.appliedDate).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label>From Date</Label>
-                  <p>{selectedRequest.fromDate}</p>
+                  <p>{new Date(selectedRequest.fromDate).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label>To Date</Label>
-                  <p>{selectedRequest.toDate}</p>
+                  <p>{new Date(selectedRequest.toDate).toLocaleDateString()}</p>
                 </div>
                 <div className="col-span-2">
                   <Label>Status</Label>

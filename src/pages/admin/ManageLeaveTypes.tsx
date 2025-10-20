@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useLeave } from '../../contexts/LeaveContext';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -21,51 +20,95 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import type { LeaveType } from '../../contexts/LeaveContext';
+import { toast } from 'sonner';
+import { Switch } from '../../components/ui/switch';
+import { Textarea } from '../../components/ui/textarea';
+import { leaveTypeService, LeaveType, CreateLeaveTypeDto } from '../../services/leaveTypeService';
 
 export function ManageLeaveTypes() {
-  const { leaveTypes, addLeaveType, updateLeaveType, deleteLeaveType } = useLeave();
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreateLeaveTypeDto>({
     name: '',
-    maxDays: 0,
+    description: '',
+    defaultDaysPerYear: 0,
+    isPaid: true,
+    requiresApproval: true,
+    maxConsecutiveDays: 365,
   });
+
+  useEffect(() => {
+    fetchLeaveTypes();
+  }, []);
+
+  const fetchLeaveTypes = async () => {
+    setIsLoading(true);
+    try {
+      const data = await leaveTypeService.getAllLeaveTypes();
+      setLeaveTypes(data);
+    } catch (error) {
+      console.error('Failed to fetch leave types:', error);
+      toast.error('Failed to load leave types');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleOpenDialog = (leaveType?: LeaveType) => {
     if (leaveType) {
       setEditingLeaveType(leaveType);
       setFormData({
         name: leaveType.name,
-        maxDays: leaveType.maxDays,
+        description: leaveType.description,
+        defaultDaysPerYear: leaveType.defaultDaysPerYear,
+        isPaid: leaveType.isPaid,
+        requiresApproval: leaveType.requiresApproval,
+        maxConsecutiveDays: leaveType.maxConsecutiveDays,
       });
     } else {
       setEditingLeaveType(null);
       setFormData({
         name: '',
-        maxDays: 0,
+        description: '',
+        defaultDaysPerYear: 0,
+        isPaid: true,
+        requiresApproval: true,
+        maxConsecutiveDays: 365,
       });
     }
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingLeaveType) {
-      updateLeaveType(editingLeaveType.id, formData);
-      toast.success('Leave type updated successfully');
-    } else {
-      addLeaveType(formData);
-      toast.success('Leave type added successfully');
+    try {
+      if (editingLeaveType) {
+        await leaveTypeService.updateLeaveType(editingLeaveType.id, formData);
+        toast.success('Leave type updated successfully');
+      } else {
+        await leaveTypeService.createLeaveType(formData);
+        toast.success('Leave type added successfully');
+      }
+      setIsDialogOpen(false);
+      fetchLeaveTypes(); // Refresh the data
+    } catch (error) {
+      console.error('Failed to save leave type:', error);
+      toast.error(editingLeaveType ? 'Failed to update leave type' : 'Failed to add leave type');
     }
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm('Are you sure you want to delete this leave type?')) {
-      deleteLeaveType(id);
-      toast.success('Leave type deleted successfully');
+      try {
+        await leaveTypeService.deleteLeaveType(id);
+        toast.success('Leave type deleted successfully');
+        fetchLeaveTypes(); // Refresh the data
+      } catch (error) {
+        console.error('Failed to delete leave type:', error);
+        toast.error('Failed to delete leave type');
+      }
     }
   };
 
@@ -91,33 +134,51 @@ export function ManageLeaveTypes() {
             <TableHeader>
               <TableRow>
                 <TableHead>Leave Type</TableHead>
-                <TableHead>Maximum Days</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Default Days/Year</TableHead>
+                <TableHead>Paid</TableHead>
+                <TableHead>Requires Approval</TableHead>
+                <TableHead>Max Consecutive Days</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {leaveTypes.map((leaveType) => (
-                <TableRow key={leaveType.id}>
-                  <TableCell>{leaveType.name}</TableCell>
-                  <TableCell>{leaveType.maxDays} days</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleOpenDialog(leaveType)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(leaveType.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-4">Loading leave types...</TableCell>
                 </TableRow>
-              ))}
+              ) : leaveTypes.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-4">No leave types found</TableCell>
+                </TableRow>
+              ) : (
+                leaveTypes.map((leaveType: LeaveType) => (
+                  <TableRow key={leaveType.id}>
+                    <TableCell>{leaveType.name}</TableCell>
+                    <TableCell>{leaveType.description}</TableCell>
+                    <TableCell>{leaveType.defaultDaysPerYear} days</TableCell>
+                    <TableCell>{leaveType.isPaid ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{leaveType.requiresApproval ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>{leaveType.maxConsecutiveDays} days</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(leaveType)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(leaveType.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -151,14 +212,66 @@ export function ManageLeaveTypes() {
                   className="bg-input-background"
                 />
               </div>
+              
               <div className="space-y-2">
-                <Label htmlFor="maxDays">Maximum Days</Label>
-                <Input
-                  id="maxDays"
-                  type="number"
-                  value={formData.maxDays}
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
                   onChange={(e) =>
-                    setFormData({ ...formData, maxDays: parseInt(e.target.value) || 0 })
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder="Provide a brief description of this leave type"
+                  required
+                  className="bg-input-background"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="defaultDaysPerYear">Default Days Per Year</Label>
+                <Input
+                  id="defaultDaysPerYear"
+                  type="number"
+                  value={formData.defaultDaysPerYear}
+                  onChange={(e) =>
+                    setFormData({ ...formData, defaultDaysPerYear: parseInt(e.target.value) || 0 })
+                  }
+                  min="0"
+                  required
+                  className="bg-input-background"
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <Label htmlFor="isPaid" className="cursor-pointer">Is Paid Leave</Label>
+                <Switch
+                  id="isPaid"
+                  checked={formData.isPaid}
+                  onCheckedChange={(checked: boolean) =>
+                    setFormData({ ...formData, isPaid: checked })
+                  }
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <Label htmlFor="requiresApproval" className="cursor-pointer">Requires Approval</Label>
+                <Switch
+                  id="requiresApproval"
+                  checked={formData.requiresApproval}
+                  onCheckedChange={(checked: boolean) =>
+                    setFormData({ ...formData, requiresApproval: checked })
+                  }
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="maxConsecutiveDays">Maximum Consecutive Days</Label>
+                <Input
+                  id="maxConsecutiveDays"
+                  type="number"
+                  value={formData.maxConsecutiveDays}
+                  onChange={(e) =>
+                    setFormData({ ...formData, maxConsecutiveDays: parseInt(e.target.value) || 0 })
                   }
                   min="0"
                   required
