@@ -20,50 +20,68 @@ import {
 } from '../../components/ui/table';
 import { Search, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { 
-  leaveRequestService, 
-  LeaveRequest 
-} from '../../services/leaveRequestService';
+// import { leaveRequestService, LeaveRequest } from '../../services/leaveRequestService';
+interface LeaveHistoryItem {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  employeeCode: string;
+  leaveTypeId: number;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason: string;
+  status: string;
+  rejectionReason?: string | null;
+  appliedDate: string;
+  actionDate?: string | null;
+  actionBy?: number | null;
+  actionByName?: string | null;
+  comments?: string | null;
+  isEmergency: boolean;
+}
 
 export function LeaveHistory() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [myRequests, setMyRequests] = useState<LeaveRequest[]>([]);
+  const [myRequests, setMyRequests] = useState<LeaveHistoryItem[]>([]);
   
   useEffect(() => {
-    if (user && user.id) {
-      fetchLeaveRequests();
-    }
-  }, [user]);
-  
-  const fetchLeaveRequests = async () => {
-    if (!user || !user.id) return;
-    
+    fetchLeaveHistory();
+    // eslint-disable-next-line
+  }, []);
+
+  const fetchLeaveHistory = async () => {
     setIsLoading(true);
     try {
-      const employeeId = parseInt(user.id);
-      const leaveRequestsData = await leaveRequestService.getLeaveRequestsByEmployee(employeeId);
-      setMyRequests(leaveRequestsData);
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+      const response = await fetch(`${API_BASE_URL}/api/Leaves`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch leave history');
+      }
+      const data: LeaveHistoryItem[] = await response.json();
+      setMyRequests(data);
     } catch (error) {
-      console.error('Failed to fetch leave requests:', error);
+      console.error('Failed to fetch leave history:', error);
       toast.error('Failed to load leave history');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredRequests = myRequests.filter((req: LeaveRequest) => {
+  const filteredRequests = myRequests.filter((req: LeaveHistoryItem) => {
     const matchesSearch =
-      req.leaveTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.reason.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
+      req.leaveTypeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.reason?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || req.status?.toLowerCase() === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'pending':
         return <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">Pending</Badge>;
       case 'approved':
@@ -71,13 +89,14 @@ export function LeaveHistory() {
       case 'rejected':
         return <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Rejected</Badge>;
       default:
-        return null;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const calculateDays = (fromDate: string, toDate: string) => {
-    const from = new Date(fromDate);
-    const to = new Date(toDate);
+  const calculateDays = (startDate: string, endDate: string, totalDays?: number) => {
+    if (typeof totalDays === 'number' && totalDays > 0) return totalDays;
+    const from = new Date(startDate);
+    const to = new Date(endDate);
     const diffTime = Math.abs(to.getTime() - from.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
     return diffDays;
@@ -114,7 +133,7 @@ export function LeaveHistory() {
               <CardContent className="p-6">
                 <p className="text-muted-foreground">Approved</p>
                 <h2 className="mt-2 text-green-600 dark:text-green-400">
-                  {myRequests.filter((req: LeaveRequest) => req.status === 'approved').length}
+                  {myRequests.filter((req: LeaveHistoryItem) => req.status?.toLowerCase() === 'approved').length}
                 </h2>
               </CardContent>
             </Card>
@@ -122,7 +141,7 @@ export function LeaveHistory() {
               <CardContent className="p-6">
                 <p className="text-muted-foreground">Pending</p>
                 <h2 className="mt-2 text-orange-600 dark:text-orange-400">
-                  {myRequests.filter((req: LeaveRequest) => req.status === 'pending').length}
+                  {myRequests.filter((req: LeaveHistoryItem) => req.status?.toLowerCase() === 'pending').length}
                 </h2>
               </CardContent>
             </Card>
@@ -179,15 +198,15 @@ export function LeaveHistory() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequests.map((request: LeaveRequest) => (
+                {filteredRequests.map((request: LeaveHistoryItem) => (
                   <TableRow key={request.id}>
                     <TableCell>{request.leaveTypeName}</TableCell>
-                    <TableCell>{new Date(request.fromDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{new Date(request.toDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{calculateDays(request.fromDate, request.toDate)}</TableCell>
+                    <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{calculateDays(request.startDate, request.endDate, request.totalDays)}</TableCell>
                     <TableCell>{new Date(request.appliedDate).toLocaleDateString()}</TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
-                    <TableCell>{request.managerRemarks || '-'}</TableCell>
+                    <TableCell>{request.comments || request.rejectionReason || '-'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

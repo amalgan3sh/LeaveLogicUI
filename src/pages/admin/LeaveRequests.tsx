@@ -30,25 +30,51 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Search, CheckCircle, XCircle, Eye } from 'lucide-react';
 import { toast } from 'sonner';
-import { leaveRequestService, LeaveRequest, UpdateLeaveStatusDto } from '../../services/leaveRequestService';
+// import { leaveRequestService, LeaveRequest, UpdateLeaveStatusDto } from '../../services/leaveRequestService';
+interface LeaveHistoryItem {
+  id: number;
+  employeeId: number;
+  employeeName: string;
+  employeeCode: string;
+  leaveTypeId: number;
+  leaveTypeName: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason: string;
+  status: string;
+  rejectionReason?: string | null;
+  appliedDate: string;
+  actionDate?: string | null;
+  actionBy?: number | null;
+  actionByName?: string | null;
+  comments?: string | null;
+  isEmergency: boolean;
+}
 
 export function LeaveRequests() {
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<LeaveHistoryItem | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [remarks, setRemarks] = useState('');
 
   useEffect(() => {
     fetchLeaveRequests();
+    // eslint-disable-next-line
   }, []);
 
   const fetchLeaveRequests = async () => {
     setIsLoading(true);
     try {
-      const data = await leaveRequestService.getAllLeaveRequests();
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+      const response = await fetch(`${API_BASE_URL}/api/Leaves`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch leave requests');
+      }
+      const data: LeaveHistoryItem[] = await response.json();
       setLeaveRequests(data);
     } catch (error) {
       console.error('Failed to fetch leave requests:', error);
@@ -58,64 +84,30 @@ export function LeaveRequests() {
     }
   };
 
-  const handleViewRequest = (request: LeaveRequest) => {
+  const handleViewRequest = (request: LeaveHistoryItem) => {
     setSelectedRequest(request);
-    setRemarks(request.managerRemarks || '');
+    setRemarks(request.comments || request.rejectionReason || '');
     setIsDialogOpen(true);
   };
 
-  const handleApprove = async () => {
-    if (selectedRequest) {
-      try {
-        const updateDto: UpdateLeaveStatusDto = {
-          status: 'approved',
-          managerRemarks: remarks
-        };
-        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
-        toast.success('Leave request approved');
-        setIsDialogOpen(false);
-        fetchLeaveRequests(); // Refresh the list
-      } catch (error) {
-        console.error('Failed to approve leave request:', error);
-        toast.error('Failed to approve leave request');
-      }
-    }
+  // Approve/Reject actions are disabled as the new API does not support them here
+  const handleApprove = () => {
+    toast.info('Approve action is not available in this view.');
+  };
+  const handleReject = () => {
+    toast.info('Reject action is not available in this view.');
   };
 
-  const handleReject = async () => {
-    if (selectedRequest) {
-      if (!remarks) {
-        toast.error('Please provide remarks for rejection');
-        return;
-      }
-      
-      try {
-        const updateDto: UpdateLeaveStatusDto = {
-          status: 'rejected',
-          managerRemarks: remarks
-        };
-        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
-        toast.success('Leave request rejected');
-        setIsDialogOpen(false);
-        fetchLeaveRequests(); // Refresh the list
-      } catch (error) {
-        console.error('Failed to reject leave request:', error);
-        toast.error('Failed to reject leave request');
-      }
-    }
-  };
-
-  const filteredRequests = leaveRequests.filter((req: LeaveRequest) => {
+  const filteredRequests = leaveRequests.filter((req: LeaveHistoryItem) => {
     const matchesSearch =
-      req.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.leaveTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      req.department.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
+      req.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.leaveTypeName?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || req.status?.toLowerCase() === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'pending':
         return <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400">Pending</Badge>;
       case 'approved':
@@ -123,7 +115,7 @@ export function LeaveRequests() {
       case 'rejected':
         return <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400">Rejected</Badge>;
       default:
-        return null;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -186,13 +178,13 @@ export function LeaveRequests() {
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-4">No leave requests found</TableCell>
                 </TableRow>
-              ) : filteredRequests.map((request: LeaveRequest) => (
+              ) : filteredRequests.map((request: LeaveHistoryItem) => (
                 <TableRow key={request.id}>
-                  <TableCell>{request.employeeName}</TableCell>
-                  <TableCell>{request.department}</TableCell>
+                  <TableCell>{request.employeeName && request.employeeName.trim() ? request.employeeName : 'n/a'}</TableCell>
+                  <TableCell>{request.employeeCode || '-'}</TableCell>
                   <TableCell>{request.leaveTypeName}</TableCell>
-                  <TableCell>{new Date(request.fromDate).toLocaleDateString()}</TableCell>
-                  <TableCell>{new Date(request.toDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(request.startDate).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(request.endDate).toLocaleDateString()}</TableCell>
                   <TableCell>{new Date(request.appliedDate).toLocaleDateString()}</TableCell>
                   <TableCell>{getStatusBadge(request.status)}</TableCell>
                   <TableCell className="text-right">
@@ -223,11 +215,11 @@ export function LeaveRequests() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Employee Name</Label>
-                  <p>{selectedRequest.employeeName}</p>
+                  <p>{selectedRequest.employeeName && selectedRequest.employeeName.trim() ? selectedRequest.employeeName : 'n/a'}</p>
                 </div>
                 <div>
-                  <Label>Department</Label>
-                  <p>{selectedRequest.department}</p>
+                  <Label>Employee Code</Label>
+                  <p>{selectedRequest.employeeCode || '-'}</p>
                 </div>
                 <div>
                   <Label>Leave Type</Label>
@@ -239,11 +231,11 @@ export function LeaveRequests() {
                 </div>
                 <div>
                   <Label>From Date</Label>
-                  <p>{new Date(selectedRequest.fromDate).toLocaleDateString()}</p>
+                  <p>{new Date(selectedRequest.startDate).toLocaleDateString()}</p>
                 </div>
                 <div>
                   <Label>To Date</Label>
-                  <p>{new Date(selectedRequest.toDate).toLocaleDateString()}</p>
+                  <p>{new Date(selectedRequest.endDate).toLocaleDateString()}</p>
                 </div>
                 <div className="col-span-2">
                   <Label>Status</Label>
@@ -255,14 +247,14 @@ export function LeaveRequests() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="remarks">Manager Remarks</Label>
+                <Label htmlFor="remarks">Manager Remarks / Comments</Label>
                 <Textarea
                   id="remarks"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   placeholder="Add your remarks here..."
                   rows={3}
-                  disabled={selectedRequest.status !== 'pending'}
+                  disabled={selectedRequest.status?.toLowerCase() !== 'pending'}
                   className="bg-input-background"
                 />
               </div>

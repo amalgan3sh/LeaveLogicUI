@@ -54,7 +54,9 @@ export function ApplyLeave() {
   const fetchLeaveTypes = async () => {
     setIsLoading(true);
     try {
+      console.log('Fetching leave types from backend...');
       const data = await leaveTypeService.getAllLeaveTypes();
+      console.log('Fetched leave types:', data);
       setLeaveTypes(data);
     } catch (error) {
       console.error('Failed to fetch leave types:', error);
@@ -66,38 +68,28 @@ export function ApplyLeave() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.leaveTypeId || !formData.fromDate || !formData.toDate || !formData.reason) {
-      toast.error('Please fill all fields');
-      return;
-    }
-
-    if (new Date(formData.fromDate) > new Date(formData.toDate)) {
-      toast.error('End date must be after start date');
-      return;
-    }
-
     setShowConfirmation(true);
   };
 
   const confirmSubmit = async () => {
-    if (!user || !user.id) {
-      toast.error('User information is missing');
-      return;
-    }
-    
     setIsSubmitting(true);
-    
     try {
-      const leaveRequest: CreateLeaveRequestDto = {
-        employeeId: parseInt(user.id),
-        leaveTypeId: formData.leaveTypeId,
-        fromDate: formData.fromDate,
-        toDate: formData.toDate,
-        reason: formData.reason
+      // Prepare payload as per manager's MyLeaves.tsx
+      const toISOStringOrEmpty = (dateStr: string) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toISOString();
       };
-      
-      await leaveRequestService.createLeaveRequest(leaveRequest);
+      const startDate = toISOStringOrEmpty(formData.fromDate);
+      const endDate = toISOStringOrEmpty(formData.toDate);
+      const leaveRequest = {
+        leaveTypeId: formData.leaveTypeId,
+        startDate,
+        endDate,
+        reason: formData.reason,
+        isEmergency: false // You can add an emergency checkbox if needed
+      };
+      await leaveRequestService.applyLeave(leaveRequest);
       toast.success('Leave request submitted successfully');
       setShowConfirmation(false);
       setFormData({
@@ -107,9 +99,10 @@ export function ApplyLeave() {
         toDate: '',
         reason: '',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit leave request:', error);
-      toast.error('Failed to submit leave request');
+      const errorMessage = error?.message || 'Failed to submit leave request';
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

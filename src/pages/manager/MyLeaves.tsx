@@ -105,93 +105,33 @@ export function MyLeaves() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.leaveType || !formData.fromDate || !formData.toDate || !formData.reason) {
-      toast.error('Please fill all fields');
-      return;
-    }
-
-    // Parse dates for validation
-    const fromDate = new Date(formData.fromDate);
-    const toDate = new Date(formData.toDate);
-    const today = new Date();
-    
-    // Ensure end date is after start date
-    if (fromDate > toDate) {
-      toast.error('End date must be after start date');
-      return;
-    }
-    
-    // Check if the leave is being applied with enough notice (unless emergency)
-    if (!formData.isEmergency) {
-      const twoDaysFromNow = new Date();
-      twoDaysFromNow.setDate(today.getDate() + 2);
-      
-      if (fromDate < twoDaysFromNow) {
-        toast.error('Regular leaves must be applied at least 2 days in advance. Mark as emergency if needed urgently.');
-        return;
-      }
-    }
-    
-    // Check for weekend dates (Saturday = 6, Sunday = 0)
-    const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
-    
-    // Create array of all dates in the range
-    let currentDate = new Date(fromDate);
-    const allDates = [];
-    while (currentDate <= toDate) {
-      if (!isWeekend(currentDate)) {
-        allDates.push(new Date(currentDate));
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      
       // Find the selected leave type to get its ID
       const selectedLeaveType = leaveTypes.find(type => type.name === formData.leaveType);
-      
       if (!selectedLeaveType) {
         toast.error('Invalid leave type selected');
-        return;
-      }
-      
-      // Validate leave length (excluding weekends)
-      if (allDates.length > selectedLeaveType.maxConsecutiveDays) {
-        toast.error(`You can only take up to ${selectedLeaveType.maxConsecutiveDays} consecutive working days for ${selectedLeaveType.name}`);
         setSubmitting(false);
         return;
       }
-      
-      // Format dates in yyyy-MM-dd format which is what the API expects
-      const formatDate = (date: Date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+      // Format dates as ISO strings with time (to match curl example)
+      const toISOStringOrEmpty = (dateStr: string) => {
+        if (!dateStr) return '';
+        const date = new Date(dateStr);
+        return date.toISOString();
       };
-      
-      const startDate = formatDate(fromDate);
-      const endDate = formatDate(toDate);
-      
-      const leaveRequestData: ApplyLeaveDto = {
+      const startDate = toISOStringOrEmpty(formData.fromDate);
+      const endDate = toISOStringOrEmpty(formData.toDate);
+      const leaveRequestData = {
         leaveTypeId: selectedLeaveType.id,
-        startDate: startDate,
-        endDate: endDate,
+        startDate,
+        endDate,
         reason: formData.reason,
-        isEmergency: formData.isEmergency,
-        employeeId: Number(user?.id) // Include employeeId which might be required by the API
+        isEmergency: formData.isEmergency
       };
-      // Debug output to console
-      console.log('Submitting leave request with data:', JSON.stringify(leaveRequestData, null, 2));
-      
       // Submit the leave request using the new API endpoint
       await leaveRequestService.applyLeave(leaveRequestData);
-      
       toast.success('Leave request submitted successfully');
-      
-      // Reset form
       setFormData({
         leaveType: '',
         fromDate: '',
@@ -199,35 +139,15 @@ export function MyLeaves() {
         reason: '',
         isEmergency: false,
       });
-      
-      // Refresh leave requests
-      if (user?.id) {
+      // Only fetch leave requests if user is employee, not manager
+      if (user?.role === 'employee' && user?.id) {
         const updatedRequests = await leaveRequestService.getLeaveRequestsByEmployee(Number(user.id));
         setMyRequests(updatedRequests);
       }
     } catch (error) {
       console.error('Error submitting leave request:', error);
-      
-      // Extract error message from response
-      const errorMessage = error instanceof Error 
-        ? error.message.includes('-') 
-          ? error.message.split('-')[1].trim()
-          : error.message
-        : 'Unknown error';
-      
-      // Handle common errors with more specific messages
-      if (errorMessage.toLowerCase().includes('overlapping leaves')) {
-        toast.error('You already have a leave request that overlaps with these dates');
-      } else if (errorMessage.toLowerCase().includes('leave balance')) {
-        toast.error(`You don't have enough leave balance for ${formData.leaveType}`);
-      } else if (errorMessage.toLowerCase().includes('dates')) {
-        toast.error('The dates you selected are invalid. Please check and try again');
-      } else {
-        toast.error(`Failed to submit leave request: ${errorMessage}`);
-      }
-      
-      // Show visual feedback about which dates are available
-      toast.info('Try selecting different dates or a different leave type');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
