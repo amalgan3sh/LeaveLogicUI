@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useLeave } from '../../contexts/LeaveContext';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -13,8 +12,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { Calendar } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { Calendar, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { 
+  leaveTypeService, 
+  LeaveType 
+} from '../../services/leaveTypeService';
+import {
+  leaveRequestService, 
+  CreateLeaveRequestDto 
+} from '../../services/leaveRequestService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,22 +34,40 @@ import {
 } from '../../components/ui/alert-dialog';
 
 export function ApplyLeave() {
-  const { leaveTypes, submitLeaveRequest, employees } = useLeave();
   const { user } = useAuth();
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [formData, setFormData] = useState({
-    leaveType: '',
+    leaveTypeId: 0,
+    leaveTypeName: '',
     fromDate: '',
     toDate: '',
     reason: '',
   });
 
-  const employee = employees.find((emp) => emp.id === user?.id);
+  useEffect(() => {
+    fetchLeaveTypes();
+  }, []);
+
+  const fetchLeaveTypes = async () => {
+    setIsLoading(true);
+    try {
+      const data = await leaveTypeService.getAllLeaveTypes();
+      setLeaveTypes(data);
+    } catch (error) {
+      console.error('Failed to fetch leave types:', error);
+      toast.error('Failed to load leave types');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.leaveType || !formData.fromDate || !formData.toDate || !formData.reason) {
+    if (!formData.leaveTypeId || !formData.fromDate || !formData.toDate || !formData.reason) {
       toast.error('Please fill all fields');
       return;
     }
@@ -55,25 +80,39 @@ export function ApplyLeave() {
     setShowConfirmation(true);
   };
 
-  const confirmSubmit = () => {
-    submitLeaveRequest({
-      employeeId: user?.id || '',
-      employeeName: user?.name || '',
-      leaveType: formData.leaveType,
-      fromDate: formData.fromDate,
-      toDate: formData.toDate,
-      reason: formData.reason,
-      department: employee?.department || '',
-    });
-
-    toast.success('Leave request submitted successfully');
-    setShowConfirmation(false);
-    setFormData({
-      leaveType: '',
-      fromDate: '',
-      toDate: '',
-      reason: '',
-    });
+  const confirmSubmit = async () => {
+    if (!user || !user.id) {
+      toast.error('User information is missing');
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const leaveRequest: CreateLeaveRequestDto = {
+        employeeId: parseInt(user.id),
+        leaveTypeId: formData.leaveTypeId,
+        fromDate: formData.fromDate,
+        toDate: formData.toDate,
+        reason: formData.reason
+      };
+      
+      await leaveRequestService.createLeaveRequest(leaveRequest);
+      toast.success('Leave request submitted successfully');
+      setShowConfirmation(false);
+      setFormData({
+        leaveTypeId: 0,
+        leaveTypeName: '',
+        fromDate: '',
+        toDate: '',
+        reason: '',
+      });
+    } catch (error) {
+      console.error('Failed to submit leave request:', error);
+      toast.error('Failed to submit leave request');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const calculateDays = () => {
@@ -105,23 +144,35 @@ export function ApplyLeave() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="leaveType">Leave Type *</Label>
-                <Select
-                  value={formData.leaveType}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, leaveType: value })
-                  }
-                >
-                  <SelectTrigger className="bg-input-background">
-                    <SelectValue placeholder="Select leave type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leaveTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.name}>
-                        {type.name} (Max: {type.maxDays} days)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {isLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <p className="text-sm text-muted-foreground">Loading leave types...</p>
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.leaveTypeId.toString()}
+                    onValueChange={(value: string) => {
+                      const selectedType = leaveTypes.find(type => type.id.toString() === value);
+                      setFormData({ 
+                        ...formData, 
+                        leaveTypeId: parseInt(value),
+                        leaveTypeName: selectedType ? selectedType.name : ''
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="bg-input-background">
+                      <SelectValue placeholder="Select leave type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leaveTypes.map((type: LeaveType) => (
+                        <SelectItem key={type.id} value={type.id.toString()}>
+                          {type.name} (Max: {type.defaultDaysPerYear} days)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -218,9 +269,9 @@ export function ApplyLeave() {
               <div className="space-y-2">
                 <p>Please review your leave request:</p>
                 <div className="p-4 bg-muted rounded-lg space-y-2 mt-4">
-                  <p><strong>Leave Type:</strong> {formData.leaveType}</p>
-                  <p><strong>From:</strong> {formData.fromDate}</p>
-                  <p><strong>To:</strong> {formData.toDate}</p>
+                  <p><strong>Leave Type:</strong> {formData.leaveTypeName}</p>
+                  <p><strong>From:</strong> {new Date(formData.fromDate).toLocaleDateString()}</p>
+                  <p><strong>To:</strong> {new Date(formData.toDate).toLocaleDateString()}</p>
                   <p><strong>Duration:</strong> {calculateDays()} day(s)</p>
                   <p><strong>Reason:</strong> {formData.reason}</p>
                 </div>
@@ -228,9 +279,16 @@ export function ApplyLeave() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSubmit}>
-              Confirm & Submit
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmSubmit} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                'Confirm & Submit'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

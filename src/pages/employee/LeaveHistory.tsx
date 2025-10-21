@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useLeave } from '../../contexts/LeaveContext';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
@@ -19,19 +18,45 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/ui/table';
-import { Search } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { 
+  leaveRequestService, 
+  LeaveRequest 
+} from '../../services/leaveRequestService';
 
 export function LeaveHistory() {
-  const { leaveRequests } = useLeave();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [myRequests, setMyRequests] = useState<LeaveRequest[]>([]);
+  
+  useEffect(() => {
+    if (user && user.id) {
+      fetchLeaveRequests();
+    }
+  }, [user]);
+  
+  const fetchLeaveRequests = async () => {
+    if (!user || !user.id) return;
+    
+    setIsLoading(true);
+    try {
+      const employeeId = parseInt(user.id);
+      const leaveRequestsData = await leaveRequestService.getLeaveRequestsByEmployee(employeeId);
+      setMyRequests(leaveRequestsData);
+    } catch (error) {
+      console.error('Failed to fetch leave requests:', error);
+      toast.error('Failed to load leave history');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const myRequests = leaveRequests.filter((req) => req.employeeId === user?.id);
-
-  const filteredRequests = myRequests.filter((req) => {
+  const filteredRequests = myRequests.filter((req: LeaveRequest) => {
     const matchesSearch =
-      req.leaveType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      req.leaveTypeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.reason.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || req.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -67,28 +92,42 @@ export function LeaveHistory() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-muted-foreground">Total Requests</p>
-            <h2 className="mt-2">{myRequests.length}</h2>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-muted-foreground">Approved</p>
-            <h2 className="mt-2 text-green-600 dark:text-green-400">
-              {myRequests.filter((req) => req.status === 'approved').length}
-            </h2>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-muted-foreground">Pending</p>
-            <h2 className="mt-2 text-orange-600 dark:text-orange-400">
-              {myRequests.filter((req) => req.status === 'pending').length}
-            </h2>
-          </CardContent>
-        </Card>
+        {isLoading ? (
+          Array(3).fill(0).map((_, index) => (
+            <Card key={index}>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-center h-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : (
+          <>
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-muted-foreground">Total Requests</p>
+                <h2 className="mt-2">{myRequests.length}</h2>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-muted-foreground">Approved</p>
+                <h2 className="mt-2 text-green-600 dark:text-green-400">
+                  {myRequests.filter((req: LeaveRequest) => req.status === 'approved').length}
+                </h2>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-muted-foreground">Pending</p>
+                <h2 className="mt-2 text-orange-600 dark:text-orange-400">
+                  {myRequests.filter((req: LeaveRequest) => req.status === 'pending').length}
+                </h2>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Leave History Table */}
@@ -122,7 +161,11 @@ export function LeaveHistory() {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredRequests.length > 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredRequests.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -136,13 +179,13 @@ export function LeaveHistory() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRequests.map((request) => (
+                {filteredRequests.map((request: LeaveRequest) => (
                   <TableRow key={request.id}>
-                    <TableCell>{request.leaveType}</TableCell>
-                    <TableCell>{request.fromDate}</TableCell>
-                    <TableCell>{request.toDate}</TableCell>
+                    <TableCell>{request.leaveTypeName}</TableCell>
+                    <TableCell>{new Date(request.fromDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(request.toDate).toLocaleDateString()}</TableCell>
                     <TableCell>{calculateDays(request.fromDate, request.toDate)}</TableCell>
-                    <TableCell>{request.appliedDate}</TableCell>
+                    <TableCell>{new Date(request.appliedDate).toLocaleDateString()}</TableCell>
                     <TableCell>{getStatusBadge(request.status)}</TableCell>
                     <TableCell>{request.managerRemarks || '-'}</TableCell>
                   </TableRow>

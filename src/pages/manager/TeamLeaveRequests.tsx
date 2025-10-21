@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useLeave } from '../../contexts/LeaveContext';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -22,22 +21,35 @@ import {
 } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
-import { Eye, CheckCircle, XCircle } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
-import type { LeaveRequest } from '../../contexts/LeaveContext';
+import { Eye, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { leaveRequestService, LeaveRequest, UpdateLeaveStatusDto } from '../../services/leaveRequestService';
 
 export function TeamLeaveRequests() {
-  const { leaveRequests, updateLeaveStatus, employees } = useLeave();
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [teamRequests, setTeamRequests] = useState<LeaveRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [remarks, setRemarks] = useState('');
 
-  // Filter team members and their requests
-  const teamMembers = employees.filter((emp) => emp.managerId === user?.id);
-  const teamRequests = leaveRequests.filter((req) =>
-    teamMembers.some((member) => member.id === req.employeeId)
-  );
+  useEffect(() => {
+    fetchTeamLeaveRequests();
+  }, []);
+
+  const fetchTeamLeaveRequests = async () => {
+    try {
+      setLoading(true);
+      const data = await leaveRequestService.getTeamLeaveRequests();
+      setTeamRequests(data);
+    } catch (error) {
+      console.error('Error fetching team leave requests:', error);
+      toast.error('Failed to load team leave requests');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleViewRequest = (request: LeaveRequest) => {
     setSelectedRequest(request);
@@ -45,23 +57,56 @@ export function TeamLeaveRequests() {
     setIsDialogOpen(true);
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (selectedRequest) {
-      updateLeaveStatus(selectedRequest.id, 'approved', remarks);
-      toast.success('Leave request approved');
-      setIsDialogOpen(false);
+      try {
+        setActionLoading(true);
+        const updateDto: UpdateLeaveStatusDto = {
+          status: 'approved',
+          managerRemarks: remarks
+        };
+        
+        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
+        toast.success('Leave request approved');
+        setIsDialogOpen(false);
+        
+        // Refresh the leave requests list
+        fetchTeamLeaveRequests();
+      } catch (error) {
+        console.error('Error approving leave request:', error);
+        toast.error('Failed to approve leave request');
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (selectedRequest) {
       if (!remarks) {
         toast.error('Please provide remarks for rejection');
         return;
       }
-      updateLeaveStatus(selectedRequest.id, 'rejected', remarks);
-      toast.success('Leave request rejected');
-      setIsDialogOpen(false);
+      
+      try {
+        setActionLoading(true);
+        const updateDto: UpdateLeaveStatusDto = {
+          status: 'rejected',
+          managerRemarks: remarks
+        };
+        
+        await leaveRequestService.updateLeaveStatus(selectedRequest.id, updateDto);
+        toast.success('Leave request rejected');
+        setIsDialogOpen(false);
+        
+        // Refresh the leave requests list
+        fetchTeamLeaveRequests();
+      } catch (error) {
+        console.error('Error rejecting leave request:', error);
+        toast.error('Failed to reject leave request');
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
@@ -80,9 +125,27 @@ export function TeamLeaveRequests() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1>Team Leave Requests</h1>
-        <p className="text-muted-foreground">Review and manage your team's leave applications</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1>Team Leave Requests</h1>
+          <p className="text-muted-foreground">Review and manage your team's leave applications</p>
+        </div>
+        <button 
+          onClick={fetchTeamLeaveRequests}
+          className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+          disabled={loading}
+        >
+          {loading ? 
+            <Loader2 className="h-4 w-4 animate-spin" /> : 
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-refresh-cw">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M3 21v-5h5" />
+            </svg>
+          }
+          <span>{loading ? 'Loading...' : 'Refresh'}</span>
+        </button>
       </div>
 
       <Card>
@@ -90,7 +153,11 @@ export function TeamLeaveRequests() {
           <CardTitle>All Team Requests</CardTitle>
         </CardHeader>
         <CardContent>
-          {teamRequests.length > 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary/70" />
+            </div>
+          ) : teamRequests.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -107,7 +174,7 @@ export function TeamLeaveRequests() {
                 {teamRequests.map((request) => (
                   <TableRow key={request.id}>
                     <TableCell>{request.employeeName}</TableCell>
-                    <TableCell>{request.leaveType}</TableCell>
+                    <TableCell>{request.leaveTypeName}</TableCell>
                     <TableCell>{request.fromDate}</TableCell>
                     <TableCell>{request.toDate}</TableCell>
                     <TableCell>{request.appliedDate}</TableCell>
@@ -147,7 +214,7 @@ export function TeamLeaveRequests() {
                 </div>
                 <div>
                   <Label>Leave Type</Label>
-                  <p>{selectedRequest.leaveType}</p>
+                  <p>{selectedRequest.leaveTypeName}</p>
                 </div>
                 <div>
                   <Label>From Date</Label>
@@ -187,16 +254,45 @@ export function TeamLeaveRequests() {
           <DialogFooter>
             {selectedRequest?.status === 'pending' ? (
               <>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsDialogOpen(false)}
+                  disabled={actionLoading}
+                >
                   Cancel
                 </Button>
-                <Button variant="destructive" onClick={handleReject}>
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Reject
+                <Button 
+                  variant="destructive" 
+                  onClick={handleReject}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject
+                    </>
+                  )}
                 </Button>
-                <Button onClick={handleApprove}>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Approve
+                <Button 
+                  onClick={handleApprove}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Approve
+                    </>
+                  )}
                 </Button>
               </>
             ) : (
