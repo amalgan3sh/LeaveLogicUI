@@ -123,6 +123,7 @@ export function MyLeaves() {
       const startDate = toISOStringOrEmpty(formData.fromDate);
       const endDate = toISOStringOrEmpty(formData.toDate);
       const leaveRequestData = {
+        employeeId: user?.id ? Number(user.id) : undefined,
         leaveTypeId: selectedLeaveType.id,
         startDate,
         endDate,

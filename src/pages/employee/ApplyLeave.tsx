@@ -74,7 +74,7 @@ export function ApplyLeave() {
   const confirmSubmit = async () => {
     setIsSubmitting(true);
     try {
-      // Prepare payload as per manager's MyLeaves.tsx
+      // Prepare payload as per new API requirement (include employeeId)
       const toISOStringOrEmpty = (dateStr: string) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
@@ -83,6 +83,7 @@ export function ApplyLeave() {
       const startDate = toISOStringOrEmpty(formData.fromDate);
       const endDate = toISOStringOrEmpty(formData.toDate);
       const leaveRequest = {
+        employeeId: user?.id ? Number(user.id) : undefined,
         leaveTypeId: formData.leaveTypeId,
         startDate,
         endDate,

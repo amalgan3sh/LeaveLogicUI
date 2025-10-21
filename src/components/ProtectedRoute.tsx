@@ -13,8 +13,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to={`/${user.role}`} replace />;
+  if (allowedRoles && user && !allowedRoles.map(r => r.toLowerCase()).includes(user.role.toLowerCase())) {
+    // Redirect to the correct dashboard based on normalized role
+    const rolePath = user.role.toLowerCase();
+    return <Navigate to={`/${rolePath}`} replace />;
   }
 
   return <>{children}</>;

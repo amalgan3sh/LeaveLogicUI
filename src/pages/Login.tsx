@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Alert, AlertDescription } from '../components/ui/alert';
 import { AlertCircle } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -16,7 +16,7 @@ export function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -25,20 +25,25 @@ export function Login() {
       return;
     }
 
-    const success = login(username, password);
-    if (success) {
+    // For admin, username is used; for others, treat as email
+    const loginResult = await login(username, password);
+    if (loginResult.success) {
       toast.success('Login successful! Welcome back.');
-      // Redirect based on role
-      if (username === 'admin') {
+      // Get user from localStorage (set by AuthContext)
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      let role = user.role ? user.role.toLowerCase() : '';
+      if (role === 'admin') {
         navigate('/admin');
-      } else if (username === 'manager') {
+      } else if (role === 'manager') {
         navigate('/manager');
-      } else {
+      } else if (role === 'employee') {
         navigate('/employee');
+      } else {
+        navigate('/');
       }
     } else {
-      setError('Invalid username or password');
-      toast.error('Invalid credentials. Please try again.');
+      setError(loginResult.error || 'Invalid username or password');
+      toast.error(loginResult.error || 'Invalid credentials. Please try again.');
     }
   };
 

@@ -44,7 +44,7 @@ import {
 } from './ui/alert-dialog';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from './ui/breadcrumb';
 import { useState } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface LayoutProps {
   children: ReactNode;
@@ -85,7 +85,7 @@ export function Layout({ children }: LayoutProps) {
         { label: 'Reports', path: '/admin/reports', icon: BarChart3 },
         { label: 'Settings', path: '/admin/settings', icon: Settings },
       ];
-    } else if (user?.role === 'manager') {
+    } else if (user?.role?.toLowerCase() === 'manager') {
       return [
         { label: 'Dashboard', path: '/manager', icon: LayoutDashboard },
         { label: 'Team Requests', path: '/manager/team-requests', icon: CalendarDays },
@@ -164,7 +164,8 @@ export function Layout({ children }: LayoutProps) {
           <ul className="space-y-2 flex-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+              // Support active state for /manager and /Manager
+              const isActive = location.pathname.toLowerCase() === item.path.toLowerCase();
               return (
                 <li key={item.path}>
                   <Link
@@ -270,7 +271,7 @@ export function Layout({ children }: LayoutProps) {
                 <Button variant="ghost" className="flex items-center gap-2 hover:bg-primary/10">
                   <Avatar className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600">
                     <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                      {user?.name.split(' ').map(n => n[0]).join('')}
+                      {user?.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden lg:block">{user?.name}</span>
@@ -281,7 +282,7 @@ export function Layout({ children }: LayoutProps) {
                   <div className="flex items-center gap-3 p-2">
                     <Avatar className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600">
                       <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-lg">
-                        {user?.name.split(' ').map(n => n[0]).join('')}
+                        {user?.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">

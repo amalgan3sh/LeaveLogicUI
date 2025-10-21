@@ -1,3 +1,25 @@
+              {/* Employee Dashboard Route for backend redirectPath */}
+              <Route
+                path="/employee/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['employee', 'Employee']}>
+                    <Layout>
+                      <EmployeeDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Manager Dashboard Route for backend redirectPath */}
+              <Route
+                path="/manager/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={['manager', 'Manager']}>
+                    <Layout>
+                      <ManagerDashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
